@@ -2,13 +2,12 @@
   "compilerOptions": {
     "target": "es6",
     "module": "commonjs",
-    "lib": [
-      "es6"
-    ],
+    "lib": ["es6"],
     "outDir": "./build",
-    "types": ["jest", "jest-extended"]
+    "types": ["jest", "jest-extended"],
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "moduleResolution": "node"
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

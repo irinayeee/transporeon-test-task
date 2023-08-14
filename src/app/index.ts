@@ -1,30 +1,31 @@
-import * as express from 'express';
-import * as morgan from 'morgan';
+import express, { type Express } from 'express';
+import morgan from 'morgan';
 
-import { notNil, flatten } from '../util';
-import { Airport, loadAirportData } from '../data';
+import { loadAirportData, loadRouteData } from '../data';
+import { constructRoutesGraph, findRoute } from '../services/routeService';
+import { type RouteHops } from '../models/RouteHops';
+import { getAirportByCode, getAirportCodeById, mapAirports } from '../services/airportService';
 
-export async function createApp() {
+export async function createApp(): Promise<Express> {
   const app = express();
 
   const airports = await loadAirportData();
-  const airportsByCode = new Map<string, Airport>(
-    flatten(airports.map((airport) => [
-      airport.iata !== null ? [airport.iata.toLowerCase(), airport] as const : null,
-      airport.icao !== null ? [airport.icao.toLowerCase(), airport] as const : null,
-    ].filter(notNil)))
-  );
+  const [airportsByCode, airportsById] = mapAirports(airports);
+
+  const routes = await loadRouteData(airportsById);
+  const routesGraph = constructRoutesGraph(routes, airports, airportsById);
 
   app.use(morgan('tiny'));
 
   app.get('/health', (_, res) => res.send('OK'));
+
   app.get('/airports/:code', (req, res) => {
-    const code = req.params['code'];
+    const code = req.params.code;
     if (code === undefined) {
       return res.status(400).send('Must provide airport code');
     }
 
-    const airport = airportsByCode.get(code.toLowerCase());
+    const airport = getAirportByCode(code, airportsByCode);
     if (airport === undefined) {
       return res.status(404).send('No such airport, please provide a valid IATA/ICAO code');
     }
@@ -33,28 +34,30 @@ export async function createApp() {
   });
 
   app.get('/routes/:source/:destination', (req, res) => {
-    const source = req.params['source'];
-    const destination = req.params['destination'];
+    const source = req.params.source;
+    const destination = req.params.destination;
     if (source === undefined || destination === undefined) {
       return res.status(400).send('Must provide source and destination airports');
     }
 
-    const sourceAirport = airportsByCode.get(source.toLowerCase());
-    const destinationAirport = airportsByCode.get(destination.toLowerCase());
+    const sourceAirport = getAirportByCode(source, airportsByCode);
+    const destinationAirport = getAirportByCode(destination, airportsByCode);
     if (sourceAirport === undefined || destinationAirport === undefined) {
       return res.status(404).send('No such airport, please provide a valid IATA/ICAO codes');
     }
 
-    // TODO: Figure out the route from source to destination
-    console.log('No algorithm implemented');
+    const route: RouteHops = findRoute(sourceAirport.id, destinationAirport.id, routesGraph);
+
+    if (!route || route.distance === Infinity) {
+      return res.status(404).send('Could not find a route');
+    }
 
     return res.status(200).send({
-      source,
-      destination,
-      distance: 0,
-      hops: [],
+      source: source.toUpperCase(),
+      destination: destination.toUpperCase(),
+      distance: route.distance,
+      hops: route.hops.map((airportID) => getAirportCodeById(airportID, airportsById)),
     });
   });
-
   return app;
 }

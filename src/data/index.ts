@@ -1,46 +1,53 @@
-import * as parse from 'csv-parse';
+import parse from 'csv-parse';
 import { readFile } from 'fs';
 import { resolve as resolvePath } from 'path';
 
 import { notNil, haversine } from '../util';
+import { type Airport } from '../models/Airport';
+import { type Route } from '../models/Route';
 
-export interface Airport {
-  id: string;
-  icao: string | null;
-  iata: string | null;
-  name: string;
-  location: {
-    latitude: number;
-    longitude: number;
-  };
-}
-
-export interface Route {
-  source: Airport;
-  destination: Airport;
-  distance: number;
-}
-
-function parseCSV<T extends Readonly<string[]>>(filePath: string, columns: T): Promise<{ [key in T[number]]: string }[]> {
-  return new Promise((resolve, reject) => {
+async function parseCSV<T extends Readonly<string[]>>(
+  filePath: string,
+  columns: T,
+): Promise<Array<{ [key in T[number]]: string }>> {
+  return await new Promise((resolve, reject) => {
     readFile(filePath, (err, data) => {
       if (err) {
-        return reject(err);
+        reject(err);
+        return;
       }
 
-      parse(data, { columns: Array.from(columns), skip_empty_lines: true, relax_column_count: true }, (err, rows) => {
-        if (err) {
-          return reject(err);
-        }
+      parse(
+        data,
+        {
+          columns: Array.from(columns),
+          skip_empty_lines: true,
+          relax_column_count: true,
+        },
+        (err, rows) => {
+          if (err) {
+            reject(err);
+            return;
+          }
 
-        resolve(rows);
-      });
+          resolve(rows);
+        },
+      );
     });
   });
 }
 
 export async function loadAirportData(): Promise<Airport[]> {
-  const columns = ['airportID', 'name', 'city', 'country', 'iata', 'icao', 'latitude', 'longitude'] as const;
+  const columns = [
+    'airportID',
+    'name',
+    'city',
+    'country',
+    'iata',
+    'icao',
+    'latitude',
+    'longitude',
+  ] as const;
   const rows = await parseCSV(resolvePath(__dirname, './airports.dat'), columns);
 
   return rows.map((row) => ({
@@ -55,28 +62,40 @@ export async function loadAirportData(): Promise<Airport[]> {
   }));
 }
 
-export async function loadRouteData(): Promise<Route[]> {
-  const airports = await loadAirportData();
-  const airportsById = new Map<string, Airport>(airports.map((airport) => [airport.id, airport] as const));
-
-  const columns = ['airline', 'airlineID', 'source', 'sourceID', 'destination', 'destinationID', 'codeshare', 'stops'] as const;
+export async function loadRouteData(airportsById: Map<string, Airport>): Promise<Route[]> {
+  const columns = [
+    'airline',
+    'airlineID',
+    'source',
+    'sourceID',
+    'destination',
+    'destinationID',
+    'codeshare',
+    'stops',
+  ] as const;
   const rows = await parseCSV(resolvePath(__dirname, './routes.dat'), columns);
 
-  return rows.filter((row) => row.stops === '0').map((row) => {
-    const source = airportsById.get(row.sourceID);
-    const destination = airportsById.get(row.destinationID);
+  const routes = rows
+    .filter((row) => row.stops === '0')
+    .map((row) => {
+      const source = airportsById.get(row.sourceID);
+      const destination = airportsById.get(row.destinationID);
 
-    if (source === undefined || destination === undefined) {
-      return null;
-    }
+      if (source === undefined || destination === undefined) {
+        return null;
+      }
 
-    return {
-      source,
-      destination,
-      distance: haversine(
-        source.location.latitude, source.location.longitude,
-        destination.location.latitude, destination.location.longitude,
-      ),
-    }
-  }).filter(notNil);
+      return {
+        sourceID: row.sourceID,
+        destinationID: row.destinationID,
+        distance: haversine(
+          source.location.latitude,
+          source.location.longitude,
+          destination.location.latitude,
+          destination.location.longitude,
+        ),
+      };
+    })
+    .filter(notNil);
+  return routes;
 }
