@@ -1,0 +1,18 @@
+{
+  "root": true,
+  "env": {
+    "commonjs": true,
+    "es6": true
+  },
+  "extends": ["eslint:recommended", "standard-with-typescript", "prettier"],
+  "parserOptions": {
+    "ecmaVersion": 6,
+    "project": "tsconfig.json"
+  },
+  "plugins": ["prettier"],
+  "ignorePatterns": ["jest.config.js"],
+  "rules": {
+    "@typescript-eslint/strict-boolean-expressions": 0,
+    "@typescript-eslint/prefer-nullish-coalescing": 0
+  }
+}
